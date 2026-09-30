@@ -111,11 +111,12 @@ function home(){
  <div class="row">${field('sw','Weight',d.sw)}${field('ss','Sets',d.ss)}${field('sr','Reps',d.sr)}</div>
  <button class="wide" onclick="logSecondary('${esc(sec).replace(/'/g,"\\'")}')">Log secondary</button></div>
  <div class="card sub"><div class="dim small">Short metcon</div>
- ${S.metconSkipped?`<h2>Skipped</h2><button class="wide" onclick="S.metconSkipped=false;save();render()">Show metcon</button>`:
+ ${S.metconSkipped?`<h2>Skipped</h2><button class="wide" onclick="S.metconSkipped=false;save();render()">Show metcon</button><button class="wide" onclick="ownMetconSheet()">Log my own metcon</button>`:
  `<h2>${esc(mc.t)}</h2><ul class="l" style="margin:6px 0">${mc.l.map(x=>`<li style="cursor:default;padding:6px 0">${esc(x)}</li>`).join('')}</ul>
  <label for="mr">Result (rounds or time)</label><input id="mr" type="text" value="${esc(d.mr)}" oninput="draft('mr',this.value)">
  <div class="btns"><button onclick="pickMetcon();save();render()">New metcon</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>
- <button class="wide" onclick="logMetcon()">Log metcon done</button>`}</div>
+ <button class="wide" onclick="logMetcon()">Log metcon done</button>
+ <button class="wide" onclick="ownMetconSheet()">Log my own metcon instead</button>`}</div>
  <button class="wide" onclick="randomSheet()">RANDOM WORKOUT</button>`;
 }
 function fillW(v){S.draft.pw=String(v);save();render()}
@@ -132,16 +133,25 @@ function logMetcon(){const mc=METCONS[S.metcon];
 function randomSheet(){sheet(`<h2>Random workout</h2><p class="dim small">Logged as extra. The queue does not move.</p>
  <label for="rn">What did you do?</label><input id="rn" type="text" placeholder="Murph, Cindy, 5k run…">
  <label for="rd" style="margin-top:10px">Notes</label><textarea id="rd"></textarea>
+ ${dateField()}
  <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logRandom()">Log workout</button></div>`)}
 function logRandom(){const n=$('rn').value.trim()||'Random workout';
- S.log.push({id:Date.now(),type:'random',t:Date.now(),move:n,n:$('rd').value});save();closeSheet();render()}
+ const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'random',t,move:n,n:$('rd').value});save();closeSheet();render()}
+function dateField(){const d=new Date(),v=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');window._today=v;return `<label for="xd" style="margin-top:10px">Date</label><input id="xd" type="date" value="${v}">`}
+function pickT(){const v=$('xd').value;return !v||v===window._today?Date.now():new Date(v+'T12:00:00').getTime()}
+function ownMetconSheet(){sheet(`<h2>My own metcon</h2><p class="dim small">Logged as a metcon. The queue does not move.</p>
+ <label for="mn">What did you do?</label><textarea id="mn" placeholder="e.g. 10 min AMRAP: 5 pull-ups, 10 push-ups, 15 squats"></textarea>
+ <label for="mr2" style="margin-top:10px">Result (rounds or time)</label><input id="mr2" type="text">
+ ${dateField()}
+ <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logOwn()">Log metcon</button></div>`)}
+function logOwn(){const m=$('mn').value.trim();if(!m)return;const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'metcon',t,move:m,n:$('mr2').value});save();closeSheet();render()}
 
 const TAGS={primary:'Primary',secondary:'Secondary',random:'Extra / Random',metcon:'Metcon'};
 function history(){
  const L=[...S.log].sort((a,b)=>b.t-a.t);
  if(!L.length)return `<h2>History</h2><p class="dim">Nothing logged yet. Finish a primary lift and it shows up here.</p>`;
  return `<h2>History</h2><ul class="l">${L.map(e=>`<li onclick="detail(${e.id})"><b>${fd(e.t)}</b> ${esc(e.type==='metcon'?'Metcon':e.move)}<span class="tag ${e.type==='primary'?'p':''}">${TAGS[e.type]}</span>
- ${e.type==='primary'||e.type==='secondary'?`<div class="dim">${esc(fmtSet(e))}</div>`:''}</li>`).join('')}</ul>`}
+ ${e.type==='primary'||e.type==='secondary'?`<div class="dim">${esc(fmtSet(e))}</div>`:''}${e.type==='metcon'||e.type==='random'?`<div class="dim">${esc((e.type==='metcon'?e.move:e.n||'').slice(0,80))}${e.type==='metcon'&&e.n?' · '+esc(e.n):''}</div>`:''}</li>`).join('')}</ul>`}
 function detail(id){
  const e=S.log.find(x=>x.id===id);if(!e)return;
  const prev=e.type==='primary'||e.type==='secondary'?S.log.filter(x=>x.move===e.move&&x.id!==id&&x.t<e.t).sort((a,b)=>b.t-a.t).slice(0,5):[];
