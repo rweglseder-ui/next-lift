@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-:root{--bg:#16181a;--card:#202326;--line:#33383c;--tx:#f1efe8;--dim:#9aa0a4;--acc:#e8c547;--acc-tx:#1a1600;--bad:#e5645a;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root{--bg:#16181a;--card:#202326;--line:#33383c;--tx:#f1efe8;--dim:#9aa0a4;--acc:#e8c547;--acc-tx:#1a1600;--bad:#e5645a;--alt:#5cc2d6;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *,*:before,*:after{box-sizing:inherit}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 Barlow,system-ui,sans-serif;padding-bottom:84px}
@@ -38,6 +38,11 @@ ul.l{list-style:none;margin:0;padding:0}
 ul.l li{padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
 .tag{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:1px 8px;color:var(--dim);margin-left:6px}
 .tag.p{color:var(--acc);border-color:var(--acc)}
+.or{display:flex;align-items:center;gap:12px;color:var(--dim);font:800 20px 'Barlow Condensed',sans-serif;letter-spacing:2px;margin:26px 0 12px}.or:before,.or:after{content:"";flex:1;border-top:1px solid var(--line)}
+.card.alt{border:2px solid var(--alt)}.card.alt h2{color:var(--alt)}
+button.alt{background:var(--alt);color:#06222a;border-color:var(--alt);width:100%;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;letter-spacing:1px;min-height:60px;margin-top:10px}
+label.ck{display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:18px;color:var(--tx)}
+label.ck input{width:26px;height:26px;padding:0;flex:none;accent-color:var(--acc)}
 nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{flex:1;border:0;border-radius:0;background:none;min-height:60px;color:var(--dim)}
 nav button.on{color:var(--acc)}
@@ -95,7 +100,13 @@ function home(){
  const lt=lastTime(cur.move),d=S.draft;
  const lw=lt?parseFloat(lt.w):NaN,st=S.step??5,up=+(lw+st).toFixed(2);
  const sugg=isFinite(lw)?`<div class="btns"><button onclick="fillW(${lw})">Use last: ${lw}</button><button onclick="fillW(${up})">Try: ${up}</button></div>`:'';
- const sec=SEC[cur.move]||'Pull-Ups or Rows',mc=METCONS[S.metcon];
+ const sec=SEC[cur.move]||'Pull-Ups or Rows',mc=METCONS[S.metcon],own=d.mo!==undefined;
+ const res=`<label for="mr">Result (rounds or time)</label><input id="mr" type="text" value="${esc(d.mr)}" oninput="draft('mr',this.value)">`;
+ const mcard=S.metconSkipped?`<h2>Skipped</h2><div class="btns"><button onclick="S.metconSkipped=false;save();render()">Show metcon</button><button onclick="S.metconSkipped=false;S.draft.mo='';save();render()">I did my own</button></div>`
+ :own?`<h2>My own metcon</h2><label for="mo">What did you do?</label><textarea id="mo" oninput="draft('mo',this.value)">${esc(d.mo)}</textarea>${res}<div class="btns"><button onclick="delete S.draft.mo;save();render()">Use suggested</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>`
+ :`<h2>${esc(mc.t)}</h2><ul class="l" style="margin:6px 0">${mc.l.map(x=>`<li style="cursor:default;padding:6px 0">${esc(x)}</li>`).join('')}</ul>${res}
+ <div class="btns"><button onclick="pickMetcon();save();render()">New metcon</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>
+ <button class="wide" onclick="S.draft.mo='';save();render()">I did my own instead</button>`;
  return `<div class="hero"><div class="dim small">Next workout</div><div class="big">${esc(cur.move.toUpperCase())}</div><div class="dim">Slot: ${esc(cur.slot)}</div></div>
  <div class="trio"><div><span class="dim small">Last</span><b>${last?esc(last.move):'None'}</b>${le?`<span class="dim small">${fd(le.t)}</span>`:''}</div>
  <div class="cur"><span class="small" style="color:var(--acc)">Current</span><b>${esc(cur.move)}</b></div>
@@ -105,47 +116,41 @@ function home(){
  ${lt?`<div class="dim">Last time: ${esc(fmtSet(lt))}${lt.n?' · '+esc(lt.n):''}</div>`:'<div class="dim">First time on this movement.</div>'}
  ${sugg}
  <div class="row">${field('pw','Weight',d.pw,lt?lt.w:'')}${field('ps','Sets',d.ps,lt?lt.s:'')}${field('pr','Reps',d.pr,lt?lt.r:'')}</div>
- <label for="pn">Notes</label><textarea id="pn" oninput="draft('pn',this.value)">${esc(d.pn)}</textarea>
- <button class="pri" onclick="askComplete()">COMPLETE PRIMARY</button></div>
+ <label for="pn">Notes</label><textarea id="pn" oninput="draft('pn',this.value)">${esc(d.pn)}</textarea></div>
  <div class="card sub"><div class="dim small">If you have time</div><h2>${esc(sec)}</h2>
  <div class="row">${field('sw','Weight',d.sw)}${field('ss','Sets',d.ss)}${field('sr','Reps',d.sr)}</div>
- <button class="wide" onclick="logSecondary('${esc(sec).replace(/'/g,"\\'")}')">Log secondary</button></div>
- <div class="card sub"><div class="dim small">Short metcon</div>
- ${S.metconSkipped?`<h2>Skipped</h2><button class="wide" onclick="S.metconSkipped=false;save();render()">Show metcon</button><button class="wide" onclick="ownMetconSheet()">Log my own metcon</button>`:
- `<h2>${esc(mc.t)}</h2><ul class="l" style="margin:6px 0">${mc.l.map(x=>`<li style="cursor:default;padding:6px 0">${esc(x)}</li>`).join('')}</ul>
- <label for="mr">Result (rounds or time)</label><input id="mr" type="text" value="${esc(d.mr)}" oninput="draft('mr',this.value)">
- <div class="btns"><button onclick="pickMetcon();save();render()">New metcon</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>
- <button class="wide" onclick="logMetcon()">Log metcon done</button>
- <button class="wide" onclick="ownMetconSheet()">Log my own metcon instead</button>`}</div>
- <button class="wide" onclick="randomSheet()">RANDOM WORKOUT</button>`;
+ <label for="sn">Notes</label><textarea id="sn" placeholder="Variation, scheme, anything specific" oninput="draft('sn',this.value)">${esc(d.sn)}</textarea></div>
+ <div class="card sub"><div class="dim small">Short metcon</div>${mcard}</div>
+ <button class="pri" onclick="askLog()">LOG WOD</button>
+ <div class="or">OR</div>
+ <div class="card alt"><h2>Something else today?</h2><div class="dim small">Skipping the primary and doing your own workout? Log it here. The queue stays put.</div>
+ <button class="alt" onclick="randomSheet()">RANDOM WORKOUT</button></div>`;
 }
 function fillW(v){S.draft.pw=String(v);save();render()}
-function askComplete(){const c=at(S.pos),n=at(S.pos+1);confirmSheet(`Complete ${c.move} and move on to ${n.move}?`,'Complete',completePrimary)}
-function completePrimary(){
- const c=at(S.pos),d=S.draft;
- S.log.push({id:Date.now(),type:'primary',t:Date.now(),move:c.move,slot:c.slot,pos:S.pos,w:d.pw??'',s:d.ps??'',r:d.pr??'',n:d.pn??''});
- S.pos++;['pw','ps','pr','pn'].forEach(k=>delete d[k]);pickMetcon();delete d.mr;save();render();scrollTo(0,0)}
-function logSecondary(m){const d=S.draft;if(!d.sw&&!d.ss&&!d.sr){return}
- S.log.push({id:Date.now(),type:'secondary',t:Date.now(),move:m,w:d.sw??'',s:d.ss??'',r:d.sr??'',n:''});
- ['sw','ss','sr'].forEach(k=>delete d[k]);save();render()}
-function logMetcon(){const mc=METCONS[S.metcon];
- S.log.push({id:Date.now(),type:'metcon',t:Date.now(),move:mc.t+': '+mc.l.join(', '),n:S.draft.mr||''});delete S.draft.mr;save();render()}
+function askLog(){
+ const c=at(S.pos),n=at(S.pos+1),d=S.draft,mc=METCONS[S.metcon],own=d.mo!==undefined,sec=SEC[c.move]||'Pull-Ups or Rows';
+ const hasS=!!(d.sw||d.ss||d.sr||d.sn),mcOk=!S.metconSkipped&&(!own||!!d.mo.trim()),mcOn=mcOk&&(own||!!d.mr);
+ sheet(`<h2>Log WOD</h2><div class="dim small">Check what you completed. Only the primary moves the queue.</div>
+ <label class="ck"><input type="checkbox" checked disabled><span><b>Primary:</b> ${esc(c.move)}</span></label>
+ <label class="ck"><input id="ks" type="checkbox" ${hasS?'checked':''}><span><b>Secondary:</b> ${esc(sec)}</span></label>
+ ${mcOk?`<label class="ck"><input id="km" type="checkbox" ${mcOn?'checked':''}><span><b>Metcon:</b> ${esc(own?d.mo.trim().slice(0,60):mc.t)}</span></label>`:''}
+ <p class="dim small">Queue moves on to ${esc(n.move)}.</p>
+ <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logWod()">Log WOD</button></div>`)}
+function logWod(){
+ const d=S.draft,c=at(S.pos),t=Date.now(),ks=$('ks').checked,km=$('km')&&$('km').checked;
+ S.log.push({id:t,type:'primary',t,move:c.move,slot:c.slot,pos:S.pos,w:d.pw??'',s:d.ps??'',r:d.pr??'',n:d.pn??''});
+ if(ks)S.log.push({id:t+1,type:'secondary',t:t+1,move:SEC[c.move]||'Pull-Ups or Rows',w:d.sw??'',s:d.ss??'',r:d.sr??'',n:d.sn??''});
+ if(km){const mc=METCONS[S.metcon],own=d.mo!==undefined;S.log.push({id:t+2,type:'metcon',t:t+2,move:own?d.mo.trim():mc.t+': '+mc.l.join(', '),n:d.mr??''})}
+ S.pos++;['pw','ps','pr','pn','sw','ss','sr','sn','mr','mo'].forEach(k=>delete d[k]);pickMetcon();save();closeSheet();render();scrollTo(0,0)}
 function randomSheet(){sheet(`<h2>Random workout</h2><p class="dim small">Logged as extra. The queue does not move.</p>
  <label for="rn">What did you do?</label><input id="rn" type="text" placeholder="Murph, Cindy, 5k run…">
  <label for="rd" style="margin-top:10px">Notes</label><textarea id="rd"></textarea>
  ${dateField()}
- <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logRandom()">Log workout</button></div>`)}
+ <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="alt" style="margin:0;font-size:18px;min-height:50px" onclick="logRandom()">Log workout</button></div>`)}
 function logRandom(){const n=$('rn').value.trim()||'Random workout';
  const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'random',t,move:n,n:$('rd').value});save();closeSheet();render()}
 function dateField(){const d=new Date(),v=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');window._today=v;return `<label for="xd" style="margin-top:10px">Date</label><input id="xd" type="date" value="${v}">`}
 function pickT(){const v=$('xd').value;return !v||v===window._today?Date.now():new Date(v+'T12:00:00').getTime()}
-function ownMetconSheet(){sheet(`<h2>My own metcon</h2><p class="dim small">Logged as a metcon. The queue does not move.</p>
- <label for="mn">What did you do?</label><textarea id="mn" placeholder="e.g. 10 min AMRAP: 5 pull-ups, 10 push-ups, 15 squats"></textarea>
- <label for="mr2" style="margin-top:10px">Result (rounds or time)</label><input id="mr2" type="text">
- ${dateField()}
- <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logOwn()">Log metcon</button></div>`)}
-function logOwn(){const m=$('mn').value.trim();if(!m)return;const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'metcon',t,move:m,n:$('mr2').value});save();closeSheet();render()}
-
 const TAGS={primary:'Primary',secondary:'Secondary',random:'Extra / Random',metcon:'Metcon'};
 function history(){
  const L=[...S.log].sort((a,b)=>b.t-a.t);
@@ -179,7 +184,7 @@ function settings(){
  <input id="xf" type="file" accept=".xlsx,.xls,.csv" hidden onchange="importXlsx(this)">
  <button class="wide" onclick="$('xf').click()">Import from Excel</button></div>
  <div class="card"><h2>Fix a mistake</h2>
- <button class="wide" ${hasUndo?'':'disabled'} onclick="confirmSheet('Undo the last completed primary? It is removed from history and its numbers go back in the form.','Undo',undoAdv)">Undo last advancement</button>
+ <button class="wide" ${hasUndo?'':'disabled'} onclick="confirmSheet('Undo the last logged WOD? The primary and any secondary or metcon logged with it are removed, and the primary and secondary numbers go back in the form.','Undo',undoAdv)">Undo last advancement</button>
  <button class="wide" onclick="confirmSheet('Skip ahead to ${esc(at(S.pos+1).move).replace(/'/g,"\\'")} without logging a workout?','Advance',()=>{S.pos++;save();render()})">Advance queue manually</button>
  <button class="wide danger" onclick="confirmSheet('Reset the rotation to the start? History is kept.','Reset',()=>{S.pos=0;save();render()},true)">Reset rotation</button></div>`}
 function readSlots(){return S.slots.map((s,i)=>{const n=$('sn'+i),m=$('sm'+i);return n?{name:n.value.trim()||'Slot',moves:m.value.split('\n').map(x=>x.trim()).filter(Boolean)}:s})}
@@ -187,7 +192,7 @@ function saveSlots(){const n=readSlots();if(n.some(s=>!s.moves.length)){sheet('<
 function moveSlot(i,d){S.slots=readSlots();const j=i+d;[S.slots[i],S.slots[j]]=[S.slots[j],S.slots[i]];save();render()}
 function removeSlot(i){if(S.slots.length<2)return;S.slots=readSlots();S.slots.splice(i,1);save();render()}
 function addSlot(){S.slots=readSlots();S.slots.push({name:'New slot',moves:['New movement']});save();render()}
-function undoAdv(){const i=S.log.map(x=>x.type).lastIndexOf('primary');if(i<0)return;const e=S.log.splice(i,1)[0];S.pos=e.pos;Object.assign(S.draft,{pw:e.w,ps:e.s,pr:e.r,pn:e.n});save();view='home';render()}
+function undoAdv(){const i=S.log.map(x=>x.type).lastIndexOf('primary');if(i<0)return;const e=S.log.splice(i,1)[0];S.pos=e.pos;Object.assign(S.draft,{pw:e.w,ps:e.s,pr:e.r,pn:e.n});const x=S.log.find(y=>y.type==='secondary'&&y.t>e.t&&y.t<=e.t+2);if(x)Object.assign(S.draft,{sw:x.w,ss:x.s,sr:x.r,sn:x.n});S.log=S.log.filter(y=>!((y.type==='secondary'||y.type==='metcon')&&y.t>e.t&&y.t<=e.t+2));save();view='home';render()}
 
 function msg(t){sheet(`<h2>${esc(t)}</h2><button class="wide" onclick="closeSheet()">OK</button>`)}
 function exportXlsx(){
