@@ -71,7 +71,12 @@ const METCONS=[
  {t:'10-minute EMOM',l:['Min 1: 10 push-ups','Min 2: 10 toes-to-bar','Min 3: 12 KB swings','Min 4: 200m run']},
  {t:'8-minute AMRAP',l:['10 goblet squats','8 burpees','200m run']},
  {t:'6-minute AMRAP',l:['10 hanging knee raises','10 push-ups','20m farmer carry x2']},
- {t:'9-minute AMRAP',l:['5 DB cleans (each arm)','10 sit-ups','200m run']}
+ {t:'9-minute AMRAP',l:['5 DB cleans (each arm)','10 sit-ups','200m run']},
+ {p:1,t:'Partner AMRAP, 10 min · swap each round',l:['10 pull-ups','10 push-ups','10 air squats','One works while the other rests']},
+ {p:1,t:'Partner relay, 8 min',l:['One runs 200m while the other does max push-ups','Swap when the runner returns','Count total laps together']},
+ {p:1,t:'Partner EMOM, 10 min',l:['Odd minutes (A): 10 toes-to-bar','Even minutes (B): 10 toes-to-bar','Swap to 12 KB swings each if grip is fried']},
+ {p:1,t:'Partner chipper, 10 min cap',l:['30 pull-ups','40 push-ups','50 air squats','Split reps any way you like']},
+ {p:1,t:'Partner carry + core, 7 min',l:['One carries a DB 40m while the other holds a plank','Swap each lap','Count laps together']}
 ];
 let S,view='home',mem=null;
 function load(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r)}catch(e){}return mem?JSON.parse(mem):JSON.parse(JSON.stringify(DEF))}
@@ -83,8 +88,8 @@ const fd=t=>new Date(t).toLocaleDateString(undefined,{month:'short',day:'numeric
 function at(i){const n=S.slots.length,s=S.slots[((i%n)+n)%n],r=Math.floor(i/n);return{move:s.moves[((r%s.moves.length)+s.moves.length)%s.moves.length],slot:s.name}}
 function lastTime(m){const e=[...S.log].reverse().find(x=>x.type==='primary'&&x.move===m);return e}
 function fmtSet(e){const b=[e.w,e.s,e.r].map(v=>v===''||v==null?'?':v);return b.join(' × ')}
-function pickMetcon(){let i;do{i=Math.floor(Math.random()*METCONS.length)}while(i===S.metcon&&METCONS.length>1);S.metcon=i;S.metconSkipped=false}
-if(S.metcon<0||!METCONS[S.metcon]){pickMetcon();save()}
+function pickMetcon(){const pm=S.mode==='partner',pool=METCONS.map((m,i)=>i).filter(i=>!!METCONS[i].p===pm);let i;do{i=pool[Math.floor(Math.random()*pool.length)]}while(i===S.metcon&&pool.length>1);S.metcon=i;S.metconSkipped=false}
+if(S.metcon<0||!METCONS[S.metcon]||!!METCONS[S.metcon].p!==(S.mode==='partner')){pickMetcon();save()}
 function draft(k,v){S.draft[k]=v;save()}
 function sheet(h){$('sheetbody').innerHTML=h;$('sheet').classList.add('open')}
 function closeSheet(){$('sheet').classList.remove('open')}
@@ -101,13 +106,15 @@ function home(){
  const lw=lt?parseFloat(lt.w):NaN,st=S.step??5,up=+(lw+st).toFixed(2);
  const sugg=isFinite(lw)?`<div class="btns"><button onclick="fillW(${lw})">Use last: ${lw}</button><button onclick="fillW(${up})">Try: ${up}</button></div>`:'';
  const sec=SEC[cur.move]||'Pull-Ups or Rows',mc=METCONS[S.metcon],own=d.mo!==undefined;
+ const pm=S.mode==='partner',on='border-color:var(--acc);color:var(--acc)';
+ const modeSw=`<div class="btns" style="margin:6px 0 10px"><button style="${pm?'':on}" onclick="setMode('solo')">Solo</button><button style="${pm?on:''}" onclick="setMode('partner')">Partner</button></div>`;
  const res=`<label for="mr">Result (rounds or time)</label><input id="mr" type="text" value="${esc(d.mr)}" oninput="draft('mr',this.value)">`;
  const mcard=S.metconSkipped?`<h2>Skipped</h2><div class="btns"><button onclick="S.metconSkipped=false;save();render()">Show metcon</button><button onclick="S.metconSkipped=false;S.draft.mo='';save();render()">I did my own</button></div>`
  :own?`<h2>My own metcon</h2><label for="mo">What did you do?</label><textarea id="mo" oninput="draft('mo',this.value)">${esc(d.mo)}</textarea>${res}<div class="btns"><button onclick="delete S.draft.mo;save();render()">Use suggested</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>`
  :`<h2>${esc(mc.t)}</h2><ul class="l" style="margin:6px 0">${mc.l.map(x=>`<li style="cursor:default;padding:6px 0">${esc(x)}</li>`).join('')}</ul>${res}
  <div class="btns"><button onclick="pickMetcon();save();render()">New metcon</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>
  <button class="wide" onclick="S.draft.mo='';save();render()">I did my own instead</button>`;
- return `<div class="hero"><div class="dim small">Next workout</div><div class="big">${esc(cur.move.toUpperCase())}</div><div class="dim">Slot: ${esc(cur.slot)}</div></div>
+ return `<div class="hero"><div class="dim small">Next workout · queue #${S.pos+1}</div><div class="big">${esc(cur.move.toUpperCase())}</div><div class="dim">Slot: ${esc(cur.slot)}</div></div>
  <div class="trio"><div><span class="dim small">Last</span><b>${last?esc(last.move):'None'}</b>${le?`<span class="dim small">${fd(le.t)}</span>`:''}</div>
  <div class="cur"><span class="small" style="color:var(--acc)">Current</span><b>${esc(cur.move)}</b></div>
  <div><span class="dim small">Next</span><b>${esc(nxt.move)}</b></div></div>
@@ -120,12 +127,13 @@ function home(){
  <div class="card sub"><div class="dim small">If you have time</div><h2>${esc(sec)}</h2>
  <div class="row">${field('sw','Weight',d.sw)}${field('ss','Sets',d.ss)}${field('sr','Reps',d.sr)}</div>
  <label for="sn">Notes</label><textarea id="sn" placeholder="Variation, scheme, anything specific" oninput="draft('sn',this.value)">${esc(d.sn)}</textarea></div>
- <div class="card sub"><div class="dim small">Short metcon</div>${mcard}</div>
+ <div class="card sub"><div class="dim small">Short metcon</div>${modeSw}${mcard}</div>
  <button class="pri" onclick="askLog()">LOG WOD</button>
  <div class="or">OR</div>
  <div class="card alt"><h2>Something else today?</h2><div class="dim small">Skipping the primary and doing your own workout? Log it here. The queue stays put.</div>
  <button class="alt" onclick="randomSheet()">RANDOM WORKOUT</button></div>`;
 }
+function setMode(m){if(S.mode===m)return;S.mode=m;pickMetcon();save();render()}
 function fillW(v){S.draft.pw=String(v);save();render()}
 function askLog(){
  const c=at(S.pos),n=at(S.pos+1),d=S.draft,mc=METCONS[S.metcon],own=d.mo!==undefined,sec=SEC[c.move]||'Pull-Ups or Rows';
@@ -177,6 +185,10 @@ function settings(){
  <label for="sm${i}" style="margin-top:8px">Movements (in order)</label><textarea id="sm${i}" style="min-height:${40+s.moves.length*26}px">${esc(s.moves.join('\n'))}</textarea>
  <div class="btns"><button onclick="moveSlot(${i},-1)" ${i===0?'disabled':''}>Move up</button><button onclick="moveSlot(${i},1)" ${i===S.slots.length-1?'disabled':''}>Move down</button><button class="danger" onclick="removeSlot(${i})">Remove</button></div></div>`).join('')}
  <div class="btns"><button onclick="addSlot()">Add slot</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="saveSlots()">Save changes</button></div>
+ <div class="card"><h2>Queue position</h2><div class="dim small">Now at #${S.pos+1}: ${esc(at(S.pos).move)}. To sync with a training partner, enter the queue number shown on their Today screen.</div>
+ <label for="qp" style="margin-top:8px">Set current workout to number</label><input id="qp" inputmode="numeric" placeholder="${S.pos+1}" oninput="qpPrev(this.value)">
+ <div id="qpv" class="small" style="color:var(--acc);min-height:20px;margin-top:4px"></div>
+ <button class="wide" onclick="setPos()">Set position</button></div>
  <div class="card"><h2>Weight suggestion</h2><label for="stp">Suggested increase over last time</label>
  <input id="stp" inputmode="decimal" value="${S.step??5}" onchange="S.step=Math.max(0,parseFloat(this.value)||5);this.value=S.step;save()"></div>
  <div class="card"><h2>Excel backup</h2><div class="dim small">Export saves history, rotation and queue position to a .xlsx file. Import replaces everything in the app with the file's contents.</div>
@@ -186,12 +198,15 @@ function settings(){
  <div class="card"><h2>Fix a mistake</h2>
  <button class="wide" ${hasUndo?'':'disabled'} onclick="confirmSheet('Undo the last logged WOD? The primary and any secondary or metcon logged with it are removed, and the primary and secondary numbers go back in the form.','Undo',undoAdv)">Undo last advancement</button>
  <button class="wide" onclick="confirmSheet('Skip ahead to ${esc(at(S.pos+1).move).replace(/'/g,"\\'")} without logging a workout?','Advance',()=>{S.pos++;save();render()})">Advance queue manually</button>
+ <button class="wide" onclick="confirmSheet('Restore the original movement lists (Back/Front Squat, Clean, Snatch/OHS and so on)? History and queue number are kept.','Restore',()=>{S.slots=JSON.parse(JSON.stringify(DEF.slots));save();render()})">Restore default movements</button>
  <button class="wide danger" onclick="confirmSheet('Reset the rotation to the start? History is kept.','Reset',()=>{S.pos=0;save();render()},true)">Reset rotation</button></div>`}
 function readSlots(){return S.slots.map((s,i)=>{const n=$('sn'+i),m=$('sm'+i);return n?{name:n.value.trim()||'Slot',moves:m.value.split('\n').map(x=>x.trim()).filter(Boolean)}:s})}
 function saveSlots(){const n=readSlots();if(n.some(s=>!s.moves.length)){sheet('<h2>Every slot needs at least one movement.</h2><button class="wide" onclick="closeSheet()">OK</button>');return}S.slots=n;save();render()}
 function moveSlot(i,d){S.slots=readSlots();const j=i+d;[S.slots[i],S.slots[j]]=[S.slots[j],S.slots[i]];save();render()}
 function removeSlot(i){if(S.slots.length<2)return;S.slots=readSlots();S.slots.splice(i,1);save();render()}
 function addSlot(){S.slots=readSlots();S.slots.push({name:'New slot',moves:['New movement']});save();render()}
+function qpPrev(v){const n=parseInt(v);$('qpv').textContent=n>0?'#'+n+': '+at(n-1).move:''}
+function setPos(){const n=parseInt($('qp').value);if(!(n>=1))return msg('Enter a queue number, 1 or higher.');const m=at(n-1).move;confirmSheet(`Set current workout to #${n}: ${m}?`,'Set',()=>{S.pos=n-1;save();render()})}
 function undoAdv(){const i=S.log.map(x=>x.type).lastIndexOf('primary');if(i<0)return;const e=S.log.splice(i,1)[0];S.pos=e.pos;Object.assign(S.draft,{pw:e.w,ps:e.s,pr:e.r,pn:e.n});const x=S.log.find(y=>y.type==='secondary'&&y.t>e.t&&y.t<=e.t+2);if(x)Object.assign(S.draft,{sw:x.w,ss:x.s,sr:x.r,sn:x.n});S.log=S.log.filter(y=>!((y.type==='secondary'||y.type==='metcon')&&y.t>e.t&&y.t<=e.t+2));save();view='home';render()}
 
 function msg(t){sheet(`<h2>${esc(t)}</h2><button class="wide" onclick="closeSheet()">OK</button>`)}
