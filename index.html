@@ -130,7 +130,7 @@ function home(){
  <div class="card sub"><div class="dim small">Short metcon</div>${modeSw}${mcard}</div>
  <button class="pri" onclick="askLog()">LOG WOD</button>
  <div class="or">OR</div>
- <div class="card alt"><h2>Something else today?</h2><div class="dim small">Skipping the primary and doing your own workout? Log it here. The queue stays put.</div>
+ <div class="card alt"><h2>Something else today?</h2><div class="dim small">Doing your own workout instead, or adding cardio after your lifts? Log it here. The queue stays put.</div>
  <button class="alt" onclick="randomSheet()">RANDOM WORKOUT</button></div>`;
 }
 function setMode(m){if(S.mode===m)return;S.mode=m;pickMetcon();save();render()}
@@ -157,14 +157,27 @@ function randomSheet(){sheet(`<h2>Random workout</h2><p class="dim small">Logged
  <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="alt" style="margin:0;font-size:18px;min-height:50px" onclick="logRandom()">Log workout</button></div>`)}
 function logRandom(){const n=$('rn').value.trim()||'Random workout';
  const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'random',t,move:n,n:$('rd').value});save();closeSheet();render()}
-function dateField(){const d=new Date(),v=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');window._today=v;return `<label for="xd" style="margin-top:10px">Date</label><input id="xd" type="date" value="${v}">`}
+function dateField(dt){const v=ymd(Date.now());window._today=v;return `<label for="xd" style="margin-top:10px">Date</label><input id="xd" type="date" value="${dt||v}">`}
 function pickT(){const v=$('xd').value;return !v||v===window._today?Date.now():new Date(v+'T12:00:00').getTime()}
-const TAGS={primary:'Primary',secondary:'Secondary',random:'Extra / Random',metcon:'Metcon'};
+const TAGS={extra:'Extra',primary:'Primary',secondary:'Secondary',random:'Extra / Random',metcon:'Metcon'};
+function ymd(t){const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function history(){
  const L=[...S.log].sort((a,b)=>b.t-a.t);
- if(!L.length)return `<h2>History</h2><p class="dim">Nothing logged yet. Finish a primary lift and it shows up here.</p>`;
- return `<h2>History</h2><ul class="l">${L.map(e=>`<li onclick="detail(${e.id})"><b>${fd(e.t)}</b> ${esc(e.type==='metcon'?'Metcon':e.move)}<span class="tag ${e.type==='primary'?'p':''}">${TAGS[e.type]}</span>
- ${e.type==='primary'||e.type==='secondary'?`<div class="dim">${esc(fmtSet(e))}</div>`:''}${e.type==='metcon'||e.type==='random'?`<div class="dim">${esc((e.type==='metcon'?e.move:e.n||'').slice(0,80))}${e.type==='metcon'&&e.n?' · '+esc(e.n):''}</div>`:''}</li>`).join('')}</ul>`}
+ const top=`<div style="display:flex;justify-content:space-between;align-items:center"><h2>History</h2><button style="min-height:44px;padding:8px 14px" onclick="addSheet()">+ Add entry</button></div>`;
+ if(!L.length)return top+`<p class="dim">Nothing logged yet. Finish a primary lift and it shows up here.</p>`;
+ let out='',day='';
+ L.forEach(e=>{const k=ymd(e.t);
+  if(k!==day){if(day)out+='</ul>';day=k;out+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-bottom:1px solid var(--line)"><b style="font-family:'Barlow Condensed',sans-serif;font-size:22px">${fd(e.t)}</b><button style="min-height:36px;padding:4px 12px;font-size:14px;color:var(--dim)" onclick="addSheet('${k}')">+ Add to this day</button></div><ul class="l">`}
+  out+=`<li onclick="detail(${e.id})">${esc(e.type==='metcon'?'Metcon':e.move)}<span class="tag ${e.type==='primary'?'p':''}">${TAGS[e.type]||e.type}</span>
+ ${e.type==='primary'||e.type==='secondary'?`<div class="dim">${esc(fmtSet(e))}</div>`:''}${e.type==='metcon'||e.type==='random'||e.type==='extra'?`<div class="dim">${esc((e.type==='metcon'?e.move:e.n||'').slice(0,80))}${e.type==='metcon'&&e.n?' · '+esc(e.n):''}</div>`:''}</li>`});
+ return top+out+'</ul>'}
+function addSheet(dt){sheet(`<h2>Add to history</h2><p class="dim small">Logged as an extra. The queue does not move.</p>
+ <label for="rn">What did you do?</label><input id="rn" type="text" placeholder="5k run, rowing, cardio…">
+ <label for="rd" style="margin-top:10px">Notes</label><textarea id="rd"></textarea>
+ ${dateField(dt)}
+ <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logExtra()">Add</button></div>`)}
+function logExtra(){const n=$('rn').value.trim()||'Extra workout';
+ const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'extra',t,move:n,n:$('rd').value});save();closeSheet();render()}
 function detail(id){
  const e=S.log.find(x=>x.id===id);if(!e)return;
  const prev=e.type==='primary'||e.type==='secondary'?S.log.filter(x=>x.move===e.move&&x.id!==id&&x.t<e.t).sort((a,b)=>b.t-a.t).slice(0,5):[];
