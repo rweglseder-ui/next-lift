@@ -86,7 +86,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fd=t=>new Date(t).toLocaleDateString(undefined,{month:'short',day:'numeric'});
 function at(i){const n=S.slots.length,s=S.slots[((i%n)+n)%n],r=Math.floor(i/n);return{move:s.moves[((r%s.moves.length)+s.moves.length)%s.moves.length],slot:s.name}}
-function lastTime(m){const e=[...S.log].reverse().find(x=>x.type==='primary'&&x.move===m);return e}
+function lastTime(m){return S.log.filter(x=>x.type==='primary'&&x.move===m).sort((a,b)=>a.t-b.t).pop()}
 function fmtSet(e){const b=[e.w,e.s,e.r].map(v=>v===''||v==null?'?':v);return b.join(' × ')}
 function pickMetcon(){const pm=S.mode==='partner',pool=METCONS.map((m,i)=>i).filter(i=>!!METCONS[i].p===pm);let i;do{i=pool[Math.floor(Math.random()*pool.length)]}while(i===S.metcon&&pool.length>1);S.metcon=i;S.metconSkipped=false}
 if(S.metcon<0||!METCONS[S.metcon]||!!METCONS[S.metcon].p!==(S.mode==='partner')){pickMetcon();save()}
@@ -142,6 +142,7 @@ function askLog(){
  <label class="ck"><input type="checkbox" checked disabled><span><b>Primary:</b> ${esc(c.move)}</span></label>
  <label class="ck"><input id="ks" type="checkbox" ${hasS?'checked':''}><span><b>Secondary:</b> ${esc(sec)}</span></label>
  ${mcOk?`<label class="ck"><input id="km" type="checkbox" ${mcOn?'checked':''}><span><b>Metcon:</b> ${esc(own?d.mo.trim().slice(0,60):mc.t)}</span></label>`:''}
+ ${(!d.pw||!d.ps||!d.pr)?'<p class="small" style="color:var(--bad)">Weight, sets or reps are blank. You can fix it later from History.</p>':''}
  <p class="dim small">Queue moves on to ${esc(n.move)}.</p>
  <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="logWod()">Log WOD</button></div>`)}
 function logWod(){
@@ -171,6 +172,20 @@ function history(){
   out+=`<li onclick="detail(${e.id})">${esc(e.type==='metcon'?'Metcon':e.move)}<span class="tag ${e.type==='primary'?'p':''}">${TAGS[e.type]||e.type}</span>
  ${e.type==='primary'||e.type==='secondary'?`<div class="dim">${esc(fmtSet(e))}</div>`:''}${e.type==='metcon'||e.type==='random'||e.type==='extra'?`<div class="dim">${esc((e.type==='metcon'?e.move:e.n||'').slice(0,80))}${e.type==='metcon'&&e.n?' · '+esc(e.n):''}</div>`:''}</li>`});
  return top+out+'</ul>'}
+function editSheet(id){const e=S.log.find(x=>x.id===id);if(!e)return;
+ const lift=e.type==='primary'||e.type==='secondary',mc=e.type==='metcon';
+ sheet(`<h2>Edit entry</h2>
+ <label for="em">${mc?'What was it?':'Movement / name'}</label>${mc?`<textarea id="em">${esc(e.move)}</textarea>`:`<input id="em" type="text" value="${esc(e.move)}">`}
+ ${lift?`<div class="row"><div><label for="ew">Weight</label><input id="ew" inputmode="decimal" value="${esc(e.w)}"></div><div><label for="es">Sets</label><input id="es" inputmode="decimal" value="${esc(e.s)}"></div><div><label for="er">Reps</label><input id="er" inputmode="decimal" value="${esc(e.r)}"></div></div>`:''}
+ <label for="en" style="margin-top:10px">${mc?'Result (rounds or time)':'Notes'}</label><textarea id="en">${esc(e.n)}</textarea>
+ <label for="ed" style="margin-top:10px">Date</label><input id="ed" type="date" value="${ymd(e.t)}">
+ <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="saveEdit(${id})">Save</button></div>`)}
+function saveEdit(id){const e=S.log.find(x=>x.id===id);if(!e)return;
+ const m=$('em').value.trim();if(m)e.move=m;
+ if($('ew')){e.w=$('ew').value.trim();e.s=$('es').value.trim();e.r=$('er').value.trim()}
+ e.n=$('en').value;
+ const d=$('ed').value;if(d&&d!==ymd(e.t))e.t=new Date(d+'T12:00:00').getTime();
+ save();closeSheet();render()}
 function addSheet(dt){sheet(`<h2>Add to history</h2><p class="dim small">Logged as an extra. The queue does not move.</p>
  <label for="rn">What did you do?</label><input id="rn" type="text" placeholder="5k run, rowing, cardio…">
  <label for="rd" style="margin-top:10px">Notes</label><textarea id="rd"></textarea>
@@ -186,7 +201,7 @@ function detail(id){
  ${e.type==='primary'||e.type==='secondary'?`<p>Weight × sets × reps: <b>${esc(fmtSet(e))}</b></p>`:`<pre>${esc(e.type==='metcon'?e.move:'')}</pre>`}
  ${e.n?`<p>Notes: ${esc(e.n)}</p>`:''}
  ${prev.length?`<div class="dim small">Previous sessions</div><ul class="l">${prev.map(p=>`<li style="cursor:default">${fd(p.t)} — ${esc(fmtSet(p))}${p.n?' · '+esc(p.n):''}</li>`).join('')}</ul>`:''}
- <div class="btns"><button class="danger" onclick="confirmSheet('Delete this entry? The queue position stays as it is.','Delete',()=>{S.log=S.log.filter(x=>x.id!==${id});save();render()},true)">Delete</button><button onclick="closeSheet()">Close</button></div>`)}
+ <div class="btns"><button class="danger" onclick="confirmSheet('Delete this entry? The queue position stays as it is.','Delete',()=>{S.log=S.log.filter(x=>x.id!==${id});save();render()},true)">Delete</button><button onclick="editSheet(${id})">Edit</button><button onclick="closeSheet()">Close</button></div>`)}
 
 function settings(){
  const up=Array.from({length:12},(_,i)=>at(S.pos+i).move);
