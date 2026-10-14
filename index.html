@@ -89,8 +89,17 @@ const fd=t=>new Date(t).toLocaleDateString(undefined,{month:'short',day:'numeric
 function at(i){const n=S.slots.length,s=S.slots[((i%n)+n)%n],r=Math.floor(i/n);return{move:s.moves[((r%s.moves.length)+s.moves.length)%s.moves.length],slot:s.name}}
 function lastTime(m){return S.log.filter(x=>(x.type==='primary'||x.type==='secondary')&&nameOf(x)===m).sort((a,b)=>a.t-b.t).pop()}
 function fmtSet(e){const b=[e.w,e.s,e.r].map(v=>v===''||v==null?'?':v);return b.join(' × ')}
-function pickMetcon(){const pm=S.mode==='partner',pool=METCONS.map((m,i)=>i).filter(i=>!!METCONS[i].p===pm);let i;do{i=pool[Math.floor(Math.random()*pool.length)]}while(i===S.metcon&&pool.length>1);S.metcon=i;S.metconSkipped=false}
-if(S.metcon<0||!METCONS[S.metcon]||!!METCONS[S.metcon].p!==(S.mode==='partner')){pickMetcon();save()}
+function mcKey(m){return m.lib?m.t:m.t+': '+m.l.join(', ')}
+function poolAll(){return [...METCONS.map(m=>({t:m.t,l:m.l,p:!!m.p,lib:false})),...(S.lib||[]).map(m=>({t:m.t,l:m.l,p:!!m.p,lib:true,id:m.id}))]}
+function wkey(e){return String(e.wk||e.move).trim().toLowerCase()}
+function lastDone(m){const k=mcKey(m).toLowerCase();return Math.max(0,...S.log.filter(e=>(e.type==='metcon'||e.type==='random'||e.type==='extra')&&wkey(e)===k).map(e=>e.t))}
+function pickMetcon(){const pm=S.mode==='partner',cur=S.mc?mcKey(S.mc):null;
+ let c=poolAll().filter(m=>!!m.p===pm);if(!c.length)return;
+ const o=c.filter(m=>mcKey(m)!==cur);if(o.length)c=o;
+ c=c.map(m=>({m,d:lastDone(m),r:Math.random()})).sort((x,y)=>x.d-y.d||x.r-y.r);
+ const m=c[Math.floor(Math.random()*Math.min(3,c.length))].m;
+ S.mc={t:m.t,l:[...m.l],p:!!m.p,lib:m.lib};S.metconSkipped=false}
+if(!S.lib)S.lib=[];if(!S.mc&&METCONS[S.metcon]){const m=METCONS[S.metcon];S.mc={t:m.t,l:[...m.l],p:!!m.p,lib:false}}if(!S.mc||!!S.mc.p!==(S.mode==='partner')){pickMetcon();save()}
 function draft(k,v){S.draft[k]=v;save()}
 function sheet(h){$('sheetbody').innerHTML=h;$('sheet').classList.add('open')}
 function closeSheet(){$('sheet').classList.remove('open')}
@@ -106,7 +115,7 @@ function home(){
  const d=S.draft,vn=curVN(),lt=lastTime(vn),pvv=d.pv!==undefined?d.pv:lastVar(cur.move);
  const lw=lt?parseFloat(lt.w):NaN,st=S.step??5,up=+(lw+st).toFixed(2);
  const sugg=isFinite(lw)?`<div class="btns"><button onclick="fillW(${lw})">Use last: ${lw}</button><button onclick="fillW(${up})">Try: ${up}</button></div>`:'';
- const sec=SEC[cur.move]||'Pull-Ups or Rows',mc=METCONS[S.metcon],own=d.mo!==undefined;
+ const sec=SEC[cur.move]||'Pull-Ups or Rows',mc=S.mc,own=d.mo!==undefined;
  const SI=getSI();
  const secCard=`<div class="card sub"><div class="dim small">If you have time</div>${SI.map((it,i)=>{const nm=(it.n||'').trim(),sl=nm?lastTime(nm):null;return `<div style="${i?'border-top:1px solid var(--line);margin-top:14px;padding-top:12px':'margin-top:6px'}">
  <label for="sv${i}">Movement</label><input id="sv${i}" type="text" list="mvlist" value="${esc(it.n)}" onfocus="this.select()" onchange="siSet(${i},'n',this.value);refreshS(${i})">
@@ -121,7 +130,7 @@ function home(){
  const mcard=S.metconSkipped?`<h2>Skipped</h2><div class="btns"><button onclick="S.metconSkipped=false;save();render()">Show metcon</button><button onclick="S.metconSkipped=false;S.draft.mo='';save();render()">I did my own</button></div>`
  :own?`<h2>My own metcon</h2><label for="mo">What did you do?</label><textarea id="mo" oninput="draft('mo',this.value)">${esc(d.mo)}</textarea>${res}<div class="btns"><button onclick="delete S.draft.mo;save();render()">Use suggested</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>`
  :`<h2>${esc(mc.t)}</h2><ul class="l" style="margin:6px 0">${mc.l.map(x=>`<li style="cursor:default;padding:6px 0">${esc(x)}</li>`).join('')}</ul>${res}
- <div class="btns"><button onclick="pickMetcon();save();render()">New metcon</button><button onclick="S.metconSkipped=true;save();render()">Skip metcon</button></div>
+ <div class="btns"><button onclick="pickMetcon();save();render()">New metcon</button><button onclick="pickSheet()">Choose</button><button onclick="S.metconSkipped=true;save();render()">Skip</button></div>
  <button class="wide" onclick="S.draft.mo='';save();render()">I did my own instead</button>`;
  return `<div class="hero"><div class="dim small">Next workout · queue #${S.pos+1}</div><div class="big">${esc(cur.move.toUpperCase())}</div><div class="dim">Slot: ${esc(cur.slot)}${vn!==cur.move?' · doing '+esc(vn):''}</div></div>
  <div class="trio"><div><span class="dim small">Last</span><b>${last?esc(last.move):'None'}</b>${le?`<span class="dim small">${fd(le.t)}</span>`:''}</div>
@@ -157,11 +166,11 @@ function refreshP(){const lt=lastTime(curVN());$('ltp').innerHTML=primLast();[['
 function refreshS(i){const nm=((getSI()[i]||{}).n||'').trim(),sl=nm?lastTime(nm):null;$('sl'+i).innerHTML=sl?'Last time: '+esc(fmtSet(sl))+(sl.n?' · '+esc(sl.n):''):''}
 function showProgNow(){view='progress';pg={k:'v',name:curVN()};render();scrollTo(0,0)}
 function showProg(k,i){pg={k,name:pgNames[i]};render();scrollTo(0,0)}
-function showFor(id){const e=S.log.find(x=>x.id===id);if(!e)return;closeSheet();view='progress';pg={k:'v',name:nameOf(e)};render();scrollTo(0,0)}
+function showFor(id){const e=S.log.find(x=>x.id===id);if(!e)return;closeSheet();view='progress';pg=(e.type==='primary'||e.type==='secondary')?{k:'v',name:nameOf(e)}:{k:'w',name:wkey(e)};render();scrollTo(0,0)}
 function setMode(m){if(S.mode===m)return;S.mode=m;pickMetcon();save();render()}
 function fillW(v){S.draft.pw=String(v);save();render()}
 function askLog(){
- const c=at(S.pos),n=at(S.pos+1),d=S.draft,mc=METCONS[S.metcon],own=d.mo!==undefined,sec=SEC[c.move]||'Pull-Ups or Rows';
+ const c=at(S.pos),n=at(S.pos+1),d=S.draft,mc=S.mc,own=d.mo!==undefined,sec=SEC[c.move]||'Pull-Ups or Rows';
  const SI=getSI().filter(it=>(it.n||'').trim()),hasS=SI.some(it=>it.w||it.s||it.r||it.nt),mcOk=!S.metconSkipped&&(!own||!!d.mo.trim()),mcOn=mcOk&&(own||!!d.mr);
  sheet(`<h2>Log WOD</h2><div class="dim small">Check what you completed. Only the primary moves the queue.</div>
  <label class="ck"><input type="checkbox" checked disabled><span><b>Primary:</b> ${esc(curVN()===c.move?c.move:curVN()+' ('+c.move+')')}</span></label>
@@ -176,15 +185,23 @@ function logWod(){
  if(vn!==c.move)p.variation=vn;
  S.log.push(p);let k=1;
  if(ks)getSI().filter(it=>(it.n||'').trim()).forEach(it=>{S.log.push({id:t+k,type:'secondary',t:t+k,move:it.n.trim(),w:it.w??'',s:it.s??'',r:it.r??'',n:it.nt??''});k++});
- if(km){const mc=METCONS[S.metcon],own=d.mo!==undefined;S.log.push({id:t+k,type:'metcon',t:t+k,move:own?d.mo.trim():mc.t+': '+mc.l.join(', '),n:d.mr??''})}
+ if(km){const mc=S.mc,own=d.mo!==undefined;const nm=own?d.mo.trim():mcKey(mc);S.log.push({id:t+k,type:'metcon',t:t+k,move:own||!mc.lib?nm:mc.t+': '+mc.l.join(', '),wk:nm,n:d.mr??''})}
  S.pos++;['pw','ps','pr','pn','pv','si','sw','ss','sr','sn','mr','mo'].forEach(x=>delete d[x]);pickMetcon();save();closeSheet();render();scrollTo(0,0)}
-function randomSheet(){sheet(`<h2>Random workout</h2><p class="dim small">Logged as extra. The queue does not move.</p>
- <label for="rn">What did you do?</label><input id="rn" type="text" placeholder="Murph, Cindy, 5k run…">
- <label for="rd" style="margin-top:10px">Notes</label><textarea id="rd"></textarea>
+function randomSheet(){
+ const names=[...new Set([...(S.lib||[]).map(w=>w.t),...S.log.filter(e=>e.type==='random').map(e=>e.move)])];
+ sheet(`<h2>Random workout</h2><p class="dim small">Logged as extra. The queue does not move.</p>
+ <label for="rn">What did you do?</label><input id="rn" type="text" list="wklist" placeholder="Murph, Cindy, 5k run…" oninput="wkHint(this.value)">
+ <datalist id="wklist">${names.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+ <div id="rh" class="dim small" style="margin-top:4px"></div>
+ <label for="rd" style="margin-top:10px">Result / notes</label><textarea id="rd"></textarea>
  ${dateField()}
+ <label class="ck"><input id="rl" type="checkbox"><span>Save to my library (add details there later)</span></label>
  <div class="btns"><button onclick="closeSheet()">Cancel</button><button class="alt" style="margin:0;font-size:18px;min-height:50px" onclick="logRandom()">Log workout</button></div>`)}
+function wkHint(v){const w=(S.lib||[]).find(x=>x.t.toLowerCase()===v.trim().toLowerCase());$('rh').textContent=w?w.l.join(' · '):''}
 function logRandom(){const n=$('rn').value.trim()||'Random workout';
- const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'random',t,move:n,n:$('rd').value});save();closeSheet();render()}
+ const t=pickT();S.log.push({id:t+Math.floor(Math.random()*1e3),type:'random',t,move:n,n:$('rd').value});
+ if($('rl').checked&&!(S.lib||[]).some(x=>x.t.toLowerCase()===n.toLowerCase()))S.lib.push({id:Date.now()+1,t:n,l:[n],p:false});
+ save();closeSheet();render()}
 function dateField(dt){const v=ymd(Date.now());window._today=v;return `<label for="xd" style="margin-top:10px">Date</label><input id="xd" type="date" value="${dt||v}">`}
 function pickT(){const v=$('xd').value;return !v||v===window._today?Date.now():new Date(v+'T12:00:00').getTime()}
 const TAGS={extra:'Extra',primary:'Primary',secondary:'Secondary',random:'Extra / Random',metcon:'Metcon'};
@@ -230,7 +247,7 @@ function detail(id){
  ${e.type==='primary'||e.type==='secondary'?`<p>Weight × sets × reps: <b>${esc(fmtSet(e))}</b></p>`:`<pre>${esc(e.type==='metcon'?e.move:'')}</pre>`}
  ${e.n?`<p>Notes: ${esc(e.n)}</p>`:''}
  ${prev.length?`<div class="dim small">Previous sessions</div><ul class="l">${prev.map(p=>`<li style="cursor:default">${fd(p.t)} — ${esc(fmtSet(p))}${p.n?' · '+esc(p.n):''}</li>`).join('')}</ul>`:''}
- ${e.type==='primary'||e.type==='secondary'?`<button class="wide" onclick="showFor(${id})">See progression for ${esc(nameOf(e))}</button>`:''}
+ ${e.type==='primary'||e.type==='secondary'?`<button class="wide" onclick="showFor(${id})">See progression for ${esc(nameOf(e))}</button>`:`<button class="wide" onclick="showFor(${id})">See this workout's history</button>`}
  <div class="btns"><button class="danger" onclick="confirmSheet('Delete this entry? The queue position stays as it is.','Delete',()=>{S.log=S.log.filter(x=>x.id!==${id});save();render()},true)">Delete</button><button onclick="editSheet(${id})">Edit</button><button onclick="closeSheet()">Close</button></div>`)}
 
 function settings(){
@@ -249,6 +266,8 @@ function settings(){
  <button class="wide" onclick="setPos()">Set position</button></div>
  <div class="card"><h2>Weight suggestion</h2><label for="stp">Suggested increase over last time</label>
  <input id="stp" inputmode="decimal" value="${S.step??5}" onchange="S.step=Math.max(0,parseFloat(this.value)||5);this.value=S.step;save()"></div>
+ <div class="card"><h2>Workout library</h2><div class="dim small">${(S.lib||[]).length} saved. Add your own workouts one at a time or upload many, then pick them or let them come up as suggestions.</div>
+ <button class="wide" onclick="view='library';render();scrollTo(0,0)">Open library</button></div>
  <div class="card"><h2>Excel backup</h2><div class="dim small">Export saves history, rotation and queue position to a .xlsx file. Import replaces everything in the app with the file's contents.</div>
  <button class="wide" onclick="exportXlsx()">Export to Excel</button>
  <input id="xf" type="file" accept=".xlsx,.xls,.csv" hidden onchange="importXlsx(this)">
@@ -270,12 +289,13 @@ function undoAdv(){const i=S.log.map(x=>x.type).lastIndexOf('primary');if(i<0)re
 function msg(t){sheet(`<h2>${esc(t)}</h2><button class="wide" onclick="closeSheet()">OK</button>`)}
 function exportXlsx(){
  if(!window.XLSX)return msg('The Excel library did not load. Check your connection and try again.');
- const H=['Date','Type','Movement','Variation','Slot','Queue Position','Weight','Sets','Reps','Notes'];
- const hist=[...S.log].sort((a,b)=>a.t-b.t).map(e=>({Date:new Date(e.t).toISOString(),Type:e.type,Movement:e.move,Variation:e.variation||'',Slot:e.slot||'','Queue Position':e.pos==null?'':e.pos+1,Weight:e.w??'',Sets:e.s??'',Reps:e.r??'',Notes:e.n||''}));
+ const H=['Date','Type','Movement','Variation','Workout','Slot','Queue Position','Weight','Sets','Reps','Notes'];
+ const hist=[...S.log].sort((a,b)=>a.t-b.t).map(e=>({Date:new Date(e.t).toISOString(),Type:e.type,Movement:e.move,Variation:e.variation||'',Workout:e.wk||'',Slot:e.slot||'','Queue Position':e.pos==null?'':e.pos+1,Weight:e.w??'',Sets:e.s??'',Reps:e.r??'',Notes:e.n||''}));
  const rot=S.slots.flatMap(s=>s.moves.map((m,j)=>({Slot:s.name,Order:j+1,Movement:m})));
  const wb=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hist,{header:H}),'History');
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rot,{header:['Slot','Order','Movement']}),'Rotation');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(libRows(),{header:['Name','Type','Details']}),'Library');
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{Setting:'Primaries completed (queue position)',Value:S.pos}],{header:['Setting','Value']}),'State');
  XLSX.writeFile(wb,'next-lift-'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
@@ -286,12 +306,12 @@ function importXlsx(inp){
  rd.onerror=()=>msg('Could not read that file.');
  rd.onload=()=>{try{
   const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}),rows=n=>wb.Sheets[n]?XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''}):null;
-  const H=rows('History'),R=rows('Rotation'),St=rows('State');
+  const H=rows('History'),R=rows('Rotation'),St=rows('State'),LB=rows('Library');
   if(!H&&!R)return msg('No History or Rotation sheet found. Use a file made by Export.');
   let pc=0;
   const log=(H||[]).filter(r=>r.Movement!==''&&TAGS[r.Type]).map((r,i)=>{
    let t=typeof r.Date==='number'?Math.round((r.Date-25569)*864e5):new Date(r.Date).getTime();if(!isFinite(t))t=Date.now()+i;
-   const e={id:t+i,type:r.Type,t,move:String(r.Movement),w:r.Weight,s:r.Sets,r:r.Reps,n:String(r.Notes||'')};if(r.Variation)e.variation=String(r.Variation);
+   const e={id:t+i,type:r.Type,t,move:String(r.Movement),w:r.Weight,s:r.Sets,r:r.Reps,n:String(r.Notes||'')};if(r.Variation)e.variation=String(r.Variation);if(r.Workout)e.wk=String(r.Workout);
    if(r.Type==='primary'){const p=Number(r['Queue Position'])-1;e.pos=isFinite(p)&&r['Queue Position']!==''?p:pc;e.slot=String(r.Slot||'');pc++}
    return e});
   let slots=S.slots;
@@ -299,11 +319,56 @@ function importXlsx(inp){
    slots=[...g].map(([n,a])=>({name:String(n),moves:a.sort((x,y)=>x.o-y.o).map(x=>x.m)}));}
   if(!slots.length)return msg('The Rotation sheet has no movements.');
   const sp=St&&St[0]&&St[0].Value!==''?Number(St[0].Value):NaN,pos=isFinite(sp)&&sp>=0?Math.floor(sp):pc;
-  window._imp={log,slots,pos};
+  window._imp={log,slots,pos};if(LB)window._imp.lib=parseLib(LB);
   confirmSheet(`Replace everything with ${log.length} history entries, ${slots.reduce((a,s)=>a+s.moves.length,0)} movements and queue position ${pos+1}?`,'Import',()=>{Object.assign(S,window._imp);S.draft={};save();view='home';render()},true);
  }catch(e){msg('That file could not be read as a workout export.')}};
  rd.readAsArrayBuffer(f);
 }
+function parseLib(rows){const g=(r,k)=>{const key=Object.keys(r).find(x=>x.trim().toLowerCase()===k);return key?r[key]:''};
+ return rows.map((r,i)=>{const t=String(g(r,'name')).trim();if(!t)return null;
+  let l=String(g(r,'details')||g(r,'workout')).split(/\r?\n|\||;/).map(x=>x.trim()).filter(Boolean);if(!l.length)l=[t];
+  return{id:Date.now()+i+Math.floor(Math.random()*1e4),t,l,p:/partner/i.test(String(g(r,'type')))}}).filter(Boolean)}
+function applyLib(items){let add=0,upd=0;items.forEach(w=>{const x=S.lib.find(y=>y.t.toLowerCase()===w.t.toLowerCase());if(x){x.l=w.l;x.p=w.p;upd++}else{S.lib.push(w);add++}});save();return [add,upd]}
+function libRows(){return (S.lib||[]).map(w=>({Name:w.t,Type:w.p?'Partner':'Solo',Details:w.l.join(' | ')}))}
+function libTemplate(){if(!window.XLSX)return msg('The Excel library did not load. Check your connection and try again.');
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{Name:'Hotel Room AMRAP',Type:'Solo',Details:'12-minute AMRAP | 10 push-ups | 15 air squats | 20 sit-ups'},{Name:'Partner Relay',Type:'Partner',Details:'10 minutes | You go, I go | 10 burpees | 200m run'}],{header:['Name','Type','Details']}),'Library');XLSX.writeFile(wb,'next-lift-library-template.xlsx')}
+function libExport(){if(!window.XLSX)return msg('The Excel library did not load. Check your connection and try again.');
+ if(!S.lib.length)return msg('Your library is empty. Get the template to start one.');
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(libRows(),{header:['Name','Type','Details']}),'Library');XLSX.writeFile(wb,'next-lift-library-'+ymd(Date.now())+'.xlsx')}
+function libImport(inp){const f=inp.files[0];inp.value='';if(!f)return;
+ if(!window.XLSX)return msg('The Excel library did not load. Check your connection and try again.');
+ const rd=new FileReader();rd.onerror=()=>msg('Could not read that file.');
+ rd.onload=()=>{try{const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'}),sh=wb.Sheets['Library']||wb.Sheets[wb.SheetNames[0]];
+  const items=parseLib(XLSX.utils.sheet_to_json(sh,{defval:''}));
+  if(!items.length)return msg('No workouts found. Use the columns Name, Type and Details.');
+  const upd=items.filter(w=>S.lib.some(y=>y.t.toLowerCase()===w.t.toLowerCase())).length;window._lib=items;
+  confirmSheet(`Add ${items.length-upd} new and update ${upd} existing workout${items.length===1?'':'s'}?`,'Import',()=>{applyLib(window._lib);render()})
+ }catch(e){msg('That file could not be read.')}};rd.readAsArrayBuffer(f)}
+function libSheet(id){const w=id?S.lib.find(x=>x.id===id):null;
+ sheet(`<h2>${w?'Edit workout':'Add workout'}</h2>
+ <label for="ln">Name</label><input id="ln" type="text" value="${esc(w?w.t:'')}" placeholder="Cindy, Hotel room AMRAP…">
+ <label for="lp" style="margin-top:10px">Type</label><select id="lp"><option value="solo" ${w&&w.p?'':'selected'}>Solo</option><option value="partner" ${w&&w.p?'selected':''}>Partner</option></select>
+ <label for="ld" style="margin-top:10px">Details (one line per movement)</label><textarea id="ld" style="min-height:120px" placeholder="12-minute AMRAP&#10;10 push-ups&#10;15 air squats">${esc(w?w.l.join('\n'):'')}</textarea>
+ <div class="btns">${w?`<button class="danger" onclick="libDel(${id})">Delete</button>`:''}<button onclick="closeSheet()">Cancel</button><button class="pri" style="margin:0;font-size:18px;min-height:50px" onclick="libSave(${id||0})">Save</button></div>`)}
+function libSave(id){const t=$('ln').value.trim();if(!t)return;
+ const l=$('ld').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),p=$('lp').value==='partner',x=id?S.lib.find(y=>y.id===id):S.lib.find(y=>y.t.toLowerCase()===t.toLowerCase());
+ if(x){x.t=t;x.l=l.length?l:[t];x.p=p}else S.lib.push({id:Date.now(),t,l:l.length?l:[t],p});
+ save();closeSheet();render()}
+function libDel(id){confirmSheet('Delete this workout from your library? Logged history is kept.','Delete',()=>{S.lib=S.lib.filter(x=>x.id!==id);save();render()},true)}
+function library(){const L=[...(S.lib||[])].sort((a,b)=>a.t.localeCompare(b.t));
+ return `<button style="min-height:44px;padding:8px 14px" onclick="view='settings';render()">← Back</button>
+ <h2 style="margin-top:12px">Workout library</h2>
+ <div class="dim small">Your own workouts. They join the metcon suggestions (least recently done come up first) and you can pick one by hand with Choose.</div>
+ <button class="pri" style="font-size:20px;min-height:56px" onclick="libSheet()">+ ADD WORKOUT</button>
+ <div class="card"><h2>Bulk upload</h2><div class="dim small">Excel or CSV with columns Name, Type (Solo or Partner) and Details (separate lines with |). Matching names are updated, new ones are added.</div>
+ <div class="btns"><button onclick="libTemplate()">Get template</button><button onclick="libExport()">Export library</button></div>
+ <input id="lf" type="file" accept=".xlsx,.xls,.csv" hidden onchange="libImport(this)"><button class="wide" onclick="$('lf').click()">Upload file</button></div>
+ ${L.length?`<ul class="l">${L.map(w=>`<li onclick="libSheet(${w.id})"><b>${esc(w.t)}</b><span class="tag">${w.p?'Partner':'Solo'}</span><div class="dim small">${esc(w.l.join(' · '))}</div></li>`).join('')}</ul>`:'<p class="dim">Nothing saved yet.</p>'}`}
+function pickSheet(){window._pool=poolAll();sheet(`<h2>Choose a workout</h2><input id="pq" type="text" placeholder="Search" oninput="pickList(this.value)" style="margin:8px 0"><div id="pl"></div>`);pickList('')}
+function pickList(q){q=q.trim().toLowerCase();const P=window._pool.map((m,i)=>({m,i})).filter(({m})=>!q||(m.t+' '+m.l.join(' ')).toLowerCase().includes(q));
+ const sec=(h,a)=>a.length?`<div class="dim small" style="margin-top:12px">${h}</div><ul class="l">${a.map(({m,i})=>{const ld=lastDone(m);return `<li onclick="chooseMc(${i})"><b>${esc(m.t)}</b><span class="tag">${m.p?'Partner':'Solo'}</span><div class="dim small">${esc(m.l.join(' · ').slice(0,90))}${ld?' · last '+fd(ld):''}</div></li>`}).join('')}</ul>`:'';
+ $('pl').innerHTML=(sec('My library',P.filter(x=>x.m.lib))+sec('Built-in',P.filter(x=>!x.m.lib)))||'<p class="dim">No matches.</p>'}
+function chooseMc(i){const m=window._pool[i];S.mc={t:m.t,l:[...m.l],p:!!m.p,lib:!!m.lib};S.mode=S.mc.p?'partner':'solo';S.metconSkipped=false;delete S.draft.mo;save();closeSheet();render()}
 function best(a){const w=a.map(e=>parseFloat(e.w)).filter(isFinite);return w.length?Math.max(...w):null}
 function chart(p){if(p.length<2)return '';
  const W=320,H=140,P=30,xs=p.map(q=>q.t),x0=Math.min(...xs),x1=Math.max(...xs),ws=p.map(q=>q.w),lo=Math.min(...ws),hi=Math.max(...ws);
@@ -311,6 +376,12 @@ function chart(p){if(p.length<2)return '';
  const pts=p.map(q=>X(q.t).toFixed(1)+','+Y(q.w).toFixed(1)).join(' ');
  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;margin:10px 0" role="img" aria-label="Weight over time"><polyline points="${pts}" fill="none" style="stroke:var(--acc);stroke-width:2.5"/>${p.map(q=>`<circle cx="${X(q.t).toFixed(1)}" cy="${Y(q.w).toFixed(1)}" r="4" style="fill:var(--acc)"/>`).join('')}<g style="fill:var(--dim);font-size:11px"><text x="2" y="${(Y(hi)+4).toFixed(1)}">${hi}</text>${hi!==lo?`<text x="2" y="${(Y(lo)+4).toFixed(1)}">${lo}</text>`:''}<text x="${P}" y="${H-6}">${fd(x0)}</text><text x="${W-P}" y="${H-6}" text-anchor="end">${fd(x1)}</text></g></svg>`}
 function progDetail(){
+ if(pg.k==='w'){const rows=S.log.filter(e=>(e.type==='metcon'||e.type==='random'||e.type==='extra')&&wkey(e)===pg.name).sort((a,b)=>b.t-a.t);
+  if(!rows.length)return `<button style="min-height:44px;padding:8px 14px" onclick="pg=null;render()">← Back</button><p class="dim">No sessions yet.</p>`;
+  return `<button style="min-height:44px;padding:8px 14px" onclick="pg=null;render()">← Back</button>
+  <h2 style="margin-top:12px">${esc(String(rows[rows.length-1].wk||rows[rows.length-1].move).slice(0,80))}</h2>
+  <div class="dim">${rows.length} time${rows.length===1?'':'s'} · most recent ${fd(rows[0].t)}</div>
+  <ul class="l">${rows.map(e=>`<li onclick="detail(${e.id})"><b>${fd(e.t)}</b> ${esc(e.n||'No result noted')}<span class="tag">${TAGS[e.type]}</span></li>`).join('')}</ul>`}
  const f=pg.k==='f',rows=(f?S.log.filter(e=>e.type==='primary'&&e.move===pg.name):lifts().filter(e=>nameOf(e)===pg.name)).sort((a,b)=>a.t-b.t);
  const pts=rows.map(e=>({t:e.t,w:parseFloat(e.w)})).filter(q=>isFinite(q.w)),b=best(rows);
  return `<button style="min-height:44px;padding:8px 14px" onclick="pg=null;render()">← Back</button>
@@ -321,8 +392,9 @@ function progDetail(){
 function progress(){
  if(pg)return progDetail();
  pgNames=[];const ref=n=>{pgNames.push(n);return pgNames.length-1};
- const L=lifts();
- if(!L.length)return `<h2>Progress</h2><p class="dim">Log a lift and its progression shows up here.</p>`;
+ const L=lifts(),W=new Map();
+ S.log.filter(e=>e.type==='metcon'||e.type==='random'||e.type==='extra').forEach(e=>{const k=wkey(e);if(!W.has(k))W.set(k,[]);W.get(k).push(e)});
+ if(!L.length&&!W.size)return `<h2>Progress</h2><p class="dim">Log a lift or workout and its progression shows up here.</p>`;
  const of=n=>L.filter(e=>nameOf(e)===n).sort((x,y)=>x.t-y.t);
  const lastT=n=>of(n).pop().t;
  const stat=n=>{const a=of(n),l=a[a.length-1],b=best(a);return `<div class="dim small">${a.length} session${a.length>1?'s':''} · last ${esc(fmtSet(l))}${b!=null?' · best '+b:''}</div>`};
@@ -332,11 +404,12 @@ function progress(){
  const newest=ns=>Math.max(...[...ns].map(lastT));
  const cards=[...foc].sort((a,b)=>newest(b[1])-newest(a[1])).map(([f,ns])=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>${esc(f)}</h2>${ns.size>1||!ns.has(f)?`<button style="min-height:36px;padding:4px 12px;font-size:14px" onclick="showProg('f',${ref(f)})">All variations</button>`:''}</div><ul class="l">${[...ns].sort((a,b)=>lastT(b)-lastT(a)).map(row).join('')}</ul></div>`).join('');
  const sc=sec.size?`<div class="card sub"><h2>Secondary lifts</h2><ul class="l">${[...sec].sort((a,b)=>lastT(b)-lastT(a)).map(row).join('')}</ul></div>`:'';
- return `<h2>Progress</h2><div class="dim small">Tap a movement to see how it has progressed.</div>${cards}${sc}`}
+ const wk=W.size?`<div class="card"><h2>Workouts</h2><ul class="l">${[...W].sort((a,b)=>Math.max(...b[1].map(e=>e.t))-Math.max(...a[1].map(e=>e.t))).map(([k,a])=>{a.sort((x,y)=>y.t-x.t);return `<li onclick="showProg('w',${ref(k)})"><b>${esc(String(a[a.length-1].wk||a[a.length-1].move).slice(0,60))}</b><div class="dim small">${a.length} time${a.length>1?'s':''} · last ${fd(a[0].t)}${a[0].n?' · '+esc(a[0].n.slice(0,40)):''}</div></li>`}).join('')}</ul></div>`:'';
+ return `<h2>Progress</h2><div class="dim small">Tap a movement or workout to see how it has progressed.</div>${cards}${sc}${wk}`}
 function fillList(){const set=new Set([...S.slots.flatMap(x=>x.moves),'Romanian Deadlift','Hang Clean','Squat Clean','Power Clean','Push Press','Rows','Pull-Ups',...lifts().map(nameOf)]);$('mvlist').innerHTML=[...set].filter(Boolean).map(n=>`<option value="${esc(n)}">`).join('')}
 function render(){
- fillList();$('app').innerHTML=view==='home'?home():view==='history'?history():view==='progress'?progress():settings();
- $('nav').innerHTML=[['home','Today'],['history','History'],['progress','Progress'],['settings','Rotation']].map(([v,l])=>`<button class="${view===v?'on':''}" onclick="view='${v}';pg=null;render();scrollTo(0,0)">${l}</button>`).join('')}
+ fillList();$('app').innerHTML=view==='home'?home():view==='history'?history():view==='progress'?progress():view==='library'?library():settings();
+ $('nav').innerHTML=[['home','Today'],['history','History'],['progress','Progress'],['settings','Rotation']].map(([v,l])=>`<button class="${view===v||(v==='settings'&&view==='library')?'on':''}" onclick="view='${v}';pg=null;render();scrollTo(0,0)">${l}</button>`).join('')}
 render();
 </script>
 </body>
